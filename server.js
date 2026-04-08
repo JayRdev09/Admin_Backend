@@ -14,13 +14,20 @@ const configRoutes = require('./routes/config.routes');
 
 const app = express();
 
-// CORS configuration for production
+// ==================== TRUST PROXY ====================
+// Required for rate limiting behind Render's proxy
+app.set('trust proxy', 1);
+
+// ==================== CORS CONFIGURATION ====================
 const allowedOrigins = [
   'http://localhost:3000',
   'http://localhost:5173',
+  'http://localhost:4173',
   'http://localhost:8000',
   'https://admin-backend-zh2f.onrender.com',
-  'https://tomato-ai-admin-frontend.onrender.com',
+  'https://admin-frontend.vercel.app',
+  'https://admin-frontend-rose-seven.vercel.app',
+  'https://*.vercel.app',
   'https://*.onrender.com'
 ];
 
@@ -29,13 +36,18 @@ app.use(cors({
     // Allow requests with no origin (like mobile apps, curl, Postman)
     if (!origin) return callback(null, true);
     
-    // Check if origin is allowed
+    // Check exact matches
     if (allowedOrigins.indexOf(origin) !== -1) {
       return callback(null, true);
     }
     
-    // Allow any render.com subdomain
-    if (origin.match(/https:\/\/.*\.onrender\.com$/)) {
+    // Allow any vercel.app subdomain
+    if (origin && origin.match(/https:\/\/.*\.vercel\.app$/)) {
+      return callback(null, true);
+    }
+    
+    // Allow any onrender.com subdomain
+    if (origin && origin.match(/https:\/\/.*\.onrender\.com$/)) {
       return callback(null, true);
     }
     
@@ -51,20 +63,20 @@ app.use(cors({
 // Handle preflight requests
 app.options('*', cors());
 
-// Security middleware
+// ==================== SECURITY MIDDLEWARE ====================
 app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" },
   crossOriginOpenerPolicy: { policy: "unsafe-none" }
 }));
 
-// Body parsing middleware
+// ==================== BODY PARSING ====================
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Logging middleware
+// ==================== LOGGING ====================
 app.use(morgan('combined'));
 
-// Rate limiting
+// ==================== RATE LIMITING ====================
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 100, // limit each IP to 100 requests per windowMs
@@ -73,6 +85,8 @@ const limiter = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
+  // Skip rate limiting for health checks
+  skip: (req) => req.path === '/health'
 });
 app.use('/api/', limiter);
 
@@ -188,6 +202,12 @@ app.use((err, req, res, next) => {
       error: 'Validation Error',
       message: err.message
     });
+  }
+  
+  // Rate limit error
+  if (err.code === 'ERR_ERL_UNEXPECTED_X_FORWARDED_FOR') {
+    console.log('Rate limit warning - this is normal behind proxy');
+    // Continue processing - this is just a warning
   }
   
   // Default error response
