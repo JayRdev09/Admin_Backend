@@ -49,6 +49,7 @@ app.use((err, req, res, next) => {
   });
 });
 
+// server.js - Add this at the bottom
 const PORT = process.env.PORT || 8000;
 app.listen(PORT, () => {
   console.log(`Admin server running on port ${PORT}`);
